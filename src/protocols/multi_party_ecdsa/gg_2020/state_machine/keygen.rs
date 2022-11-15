@@ -1,5 +1,6 @@
 //! High-level keygen protocol implementation
 
+use std::convert::TryFrom;
 use std::fmt;
 use std::mem::replace;
 use std::time::Duration;
@@ -23,6 +24,8 @@ mod rounds;
 use private::InternalError;
 pub use rounds::{LocalKey, ProceedError};
 use rounds::{Round0, Round1, Round2, Round3, Round4};
+use crate::protocols::multi_party_ecdsa::gg_2020::party_i::KeyGenDecommitMessage1;
+use crate::protocols::multi_party_ecdsa::gg_2020::party_i::KeyGenBroadcastMessage1;
 
 /// Keygen protocol state machine
 ///
@@ -398,7 +401,7 @@ impl fmt::Debug for Keygen {
 }
 
 // Rounds
-
+#[derive(Serialize, Deserialize)]
 enum R {
     Round0(Round0),
     Round1(Round1),
@@ -487,6 +490,130 @@ mod private {
         #[doc(hidden)]
         StoreGone,
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct KeygenExportedState {
+    round: R,
+
+    msgs1: Vec<gg_2020::party_i::KeyGenBroadcastMessage1>,
+    msgs2: Vec<gg_2020::party_i::KeyGenDecommitMessage1>,
+    msgs3: Vec<(VerifiableSS<Secp256k1>, Scalar<Secp256k1>)>,
+    msgs4: Vec<DLogProof<Secp256k1, Sha256>>,
+
+    msgs_queue: Vec<Msg<ProtocolMessage>>,
+
+    party_i: u16,
+    party_n: u16,
+}
+
+impl From<Keygen> for KeygenExportedState {
+    fn from(keygen: Keygen) -> Self {
+        let m1 = keygen.msgs1
+            .map(|mm|
+                mm.finish().map_or(Vec::new(), |x| x.into_vec())
+            ).unwrap_or(Vec::new());
+
+        let m2 = keygen.msgs2
+            .map(|mm|
+                mm.finish().map_or(Vec::new(), |x| x.into_vec())
+            ).unwrap_or(Vec::new());
+
+        let m3 = keygen.msgs3
+            .map(|mm|
+                mm.finish().map_or(Vec::new(), |x| x.into_vec())
+            ).unwrap_or(Vec::new());
+
+        let m4 = keygen.msgs4
+            .map(|mm|
+                mm.finish().map_or(Vec::new(), |x| x.into_vec())
+            ).unwrap_or(Vec::new());
+
+        Self {
+            round: keygen.round,
+            msgs1: m1,
+            msgs2: m2,
+            msgs3: m3,
+            msgs4: m4,
+            msgs_queue: keygen.msgs_queue,
+            party_i: keygen.party_i,
+            party_n: keygen.party_n
+        }
+    }
+}
+
+impl TryFrom<KeygenExportedState> for Keygen {
+    type Error = StoreErr;
+
+    fn try_from(value: KeygenExportedState) -> std::result::Result<Self, Self::Error> {
+        let mut msgs1 = Round1::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<BroadcastMsgs<KeyGenBroadcastMessage1>>(
+            value.party_i,
+            None,
+            &mut msgs1,
+            value.msgs1
+        )?;
+
+        let mut msgs2 = Round2::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<BroadcastMsgs<KeyGenDecommitMessage1>>(
+            value.party_i,
+            None,
+            &mut msgs2,
+            value.msgs2
+        )?;
+
+        let mut msgs3 = Round3::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<P2PMsgs<(VerifiableSS<Secp256k1>, Scalar<Secp256k1>)>>(
+            value.party_i,
+            Some(value.party_i),
+            &mut msgs3,
+            value.msgs3
+        )?;
+
+        let mut msgs4 = Round4::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<BroadcastMsgs<DLogProof<Secp256k1, Sha256>>>(
+            value.party_i,
+            None,
+            &mut msgs4,
+            value.msgs4
+        )?;
+
+        Ok(Keygen {
+            round: value.round,
+
+            msgs1: Some(msgs1),
+            msgs2: Some(msgs2),
+            msgs3: Some(msgs3),
+            msgs4: Some(msgs4),
+
+            msgs_queue: value.msgs_queue,
+
+            party_i: value.party_i,
+            party_n: value.party_n
+        })
+    }
+}
+
+fn push_messages_to_store<Container: MessageContainer>(
+    my_index: u16,
+    receiver: Option<u16>,
+    store: &mut Store<Container>,
+    msgs: Vec<<Store<Container> as MessageStore>::M>
+) -> std::result::Result<(), <Store<Container> as MessageStore>::Err> {
+    if msgs.is_empty() {
+        return Ok(());
+    }
+
+    for (i, el) in msgs.into_iter().enumerate() {
+        let sender = if i >= my_index.into() { i + 1 } else { i };
+        store.push_msg(Msg{
+            sender: sender as u16,
+            receiver,
+            body: el,
+        })?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
