@@ -43,6 +43,7 @@ use crate::utilities::zk_pdl_with_slack::PDLwSlackProof;
 use curv::BigInt;
 use rounds::*;
 pub use rounds::{CompletedOfflineStage, Error as ProceedError, PartialSignature};
+use crate::protocols::multi_party_ecdsa::gg_2020::state_machine::keygen::push_messages_to_store;
 
 /// Offline Stage of GG20 signing
 ///
@@ -463,6 +464,7 @@ impl super::traits::RoundBlame for OfflineStage {
 }
 
 #[allow(clippy::large_enum_variant)]
+#[derive(Serialize, Deserialize, Clone)]
 enum OfflineR {
     R0(Round0),
     R1(Round1),
@@ -489,6 +491,7 @@ enum OfflineM {
     M6((SI, HEGProof)),
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct MsgQueue(Vec<Msg<OfflineProtocolMessage>>);
 
 macro_rules! make_pushable {
@@ -760,5 +763,124 @@ mod test {
         let local_keys = simulate_keygen(2, 3);
         let offline_stage = simulate_offline_stage(local_keys, &[1, 2, 3]);
         simulate_signing(offline_stage, b"ZenGo")
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OfflineStageExportedState {
+    round: OfflineR,
+    msgs1: Vec<Option<(MessageA, SignBroadcastPhase1)>>,
+    msgs2: Vec<Option<(GammaI, WI)>>,
+    msgs3: Vec<Option<(DeltaI, TI, TIProof)>>,
+    msgs4: Vec<Option<SignDecommitPhase1>>,
+    msgs5: Vec<Option<(RDash, Vec<PDLwSlackProof>)>>,
+    msgs6: Vec<Option<(SI, HEGProof)>>,
+
+    msgs_queue: MsgQueue,
+
+    party_i: u16,
+    party_n: u16,
+}
+
+impl OfflineStageExportedState {
+    pub fn from(offline_stage: &OfflineStage) -> Self {
+        let m1 = offline_stage.msgs1.as_ref()
+            .map(|mm| mm.get_msgs()).unwrap_or(Vec::new());
+        let m2 = offline_stage.msgs2.as_ref()
+            .map(|mm| mm.get_msgs()).unwrap_or(Vec::new());
+        let m3 = offline_stage.msgs3.as_ref()
+            .map(|mm| mm.get_msgs()).unwrap_or(Vec::new());
+        let m4 = offline_stage.msgs4.as_ref()
+            .map(|mm| mm.get_msgs()).unwrap_or(Vec::new());
+        let m5 = offline_stage.msgs5.as_ref()
+            .map(|mm| mm.get_msgs()).unwrap_or(Vec::new());
+
+        let m6 = offline_stage.msgs6.as_ref()
+            .map(|mm| mm.get_msgs()).unwrap_or(Vec::new());
+
+        Self {
+            round: offline_stage.round.clone(),
+            msgs1: m1,
+            msgs2: m2,
+            msgs3: m3,
+            msgs4: m4,
+            msgs5: m5,
+            msgs6: m6,
+
+            msgs_queue: offline_stage.msgs_queue.clone(),
+
+            party_i: offline_stage.party_i,
+            party_n: offline_stage.party_n
+        }
+    }
+}
+
+impl TryFrom<OfflineStageExportedState> for OfflineStage {
+    type Error = StoreErr;
+
+    fn try_from(value: OfflineStageExportedState) -> std::result::Result<Self, Self::Error> {
+        let mut msgs1 = Round1::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<BroadcastMsgs<(MessageA, SignBroadcastPhase1)>>(
+            value.party_i,
+            None,
+            &mut msgs1,
+            value.msgs1
+        )?;
+
+        let mut msgs2 = Round2::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<P2PMsgs<(GammaI, WI)>>(
+            value.party_i,
+            Some(value.party_i),
+            &mut msgs2,
+            value.msgs2
+        )?;
+
+        let mut msgs3 = Round3::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<BroadcastMsgs<(DeltaI, TI, TIProof)>>(
+            value.party_i,
+            None,
+            &mut msgs3,
+            value.msgs3
+        )?;
+
+        let mut msgs4 = Round4::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<BroadcastMsgs<SignDecommitPhase1>>(
+            value.party_i,
+            None,
+            &mut msgs4,
+            value.msgs4
+        )?;
+
+        let mut msgs5 = Round5::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<BroadcastMsgs<(RDash, Vec<PDLwSlackProof>)>>(
+            value.party_i,
+            None,
+            &mut msgs5,
+            value.msgs5
+        )?;
+
+        let mut msgs6 = Round6::expects_messages(value.party_i, value.party_n);
+        push_messages_to_store::<BroadcastMsgs<(SI, HEGProof)>>(
+            value.party_i,
+            None,
+            &mut msgs6,
+            value.msgs6
+        )?;
+
+        Ok(OfflineStage{
+            round: value.round,
+
+            msgs1: Some(msgs1),
+            msgs2: Some(msgs2),
+            msgs3: Some(msgs3),
+            msgs4: Some(msgs4),
+            msgs5: Some(msgs5),
+            msgs6: Some(msgs6),
+
+            msgs_queue: value.msgs_queue,
+
+            party_i: value.party_i,
+            party_n: value.party_n
+        })
     }
 }

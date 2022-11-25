@@ -76,7 +76,7 @@ pub struct MessagesContainer {
 }
 
 impl ReceivedMessages {
-    fn from_broadcast<T>(store: Option<&BroadcastMsgsStore<T>>) -> Self {
+    fn from_broadcast<T: Clone>(store: Option<&BroadcastMsgsStore<T>>) -> Self {
         match store {
             Some(store) => ReceivedMessages(Some(MessagesContainer {
                 ty: ContainerType::Broadcast,
@@ -86,7 +86,7 @@ impl ReceivedMessages {
             None => ReceivedMessages(None),
         }
     }
-    fn from_p2p<T>(store: Option<&P2PMsgsStore<T>>) -> Self {
+    fn from_p2p<T: Clone>(store: Option<&P2PMsgsStore<T>>) -> Self {
         match store {
             Some(store) => ReceivedMessages(Some(MessagesContainer {
                 ty: ContainerType::P2P,

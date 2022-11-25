@@ -48,6 +48,7 @@ pub struct SI(pub Point<Secp256k1>);
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HEGProof(pub HomoELGamalProof<Secp256k1, Sha256>);
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round0 {
     /// Index of this party
     ///
@@ -108,6 +109,7 @@ impl Round0 {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round1 {
     i: u16,
     s_l: Vec<u16>,
@@ -205,6 +207,7 @@ impl Round1 {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round2 {
     i: u16,
     s_l: Vec<u16>,
@@ -303,6 +306,7 @@ impl Round2 {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round3 {
     i: u16,
     s_l: Vec<u16>,
@@ -383,6 +387,7 @@ impl Round3 {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round4 {
     i: u16,
     s_l: Vec<u16>,
@@ -478,6 +483,7 @@ impl Round4 {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round5 {
     i: u16,
     s_l: Vec<u16>,
@@ -567,6 +573,7 @@ impl Round5 {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round6 {
     S_i: Point<Secp256k1>,
     homo_elgamal_proof: HomoELGamalProof<Secp256k1, Sha256>,
