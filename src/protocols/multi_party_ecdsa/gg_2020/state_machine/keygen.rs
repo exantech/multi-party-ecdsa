@@ -401,7 +401,7 @@ impl fmt::Debug for Keygen {
 }
 
 // Rounds
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 enum R {
     Round0(Round0),
     Round1(Round1),
@@ -496,10 +496,10 @@ mod private {
 pub struct KeygenExportedState {
     round: R,
 
-    msgs1: Vec<gg_2020::party_i::KeyGenBroadcastMessage1>,
-    msgs2: Vec<gg_2020::party_i::KeyGenDecommitMessage1>,
-    msgs3: Vec<(VerifiableSS<Secp256k1>, Scalar<Secp256k1>)>,
-    msgs4: Vec<DLogProof<Secp256k1, Sha256>>,
+    msgs1: Vec<Option<gg_2020::party_i::KeyGenBroadcastMessage1>>,
+    msgs2: Vec<Option<gg_2020::party_i::KeyGenDecommitMessage1>>,
+    msgs3: Vec<Option<(VerifiableSS<Secp256k1>, Scalar<Secp256k1>)>>,
+    msgs4: Vec<Option<DLogProof<Secp256k1, Sha256>>>,
 
     msgs_queue: Vec<Msg<ProtocolMessage>>,
 
@@ -507,35 +507,33 @@ pub struct KeygenExportedState {
     party_n: u16,
 }
 
-impl From<Keygen> for KeygenExportedState {
-    fn from(keygen: Keygen) -> Self {
-        let m1 = keygen.msgs1
-            .map(|mm|
-                mm.finish().map_or(Vec::new(), |x| x.into_vec())
-            ).unwrap_or(Vec::new());
+impl KeygenExportedState {
+    pub fn from(keygen: &Keygen) -> Self {
+        let m1 = keygen.msgs1.as_ref()
+            .map(|mm| mm.get_msgs()).unwrap_or(Vec::new());
 
-        let m2 = keygen.msgs2
-            .map(|mm|
-                mm.finish().map_or(Vec::new(), |x| x.into_vec())
-            ).unwrap_or(Vec::new());
+        let m2 = keygen.msgs2.as_ref()
+            .map(|mm| {
+                mm.get_msgs()
+            }).unwrap_or(Vec::new());
 
-        let m3 = keygen.msgs3
-            .map(|mm|
-                mm.finish().map_or(Vec::new(), |x| x.into_vec())
-            ).unwrap_or(Vec::new());
+        let m3 = keygen.msgs3.as_ref()
+            .map(|mm| {
+                mm.get_msgs()
+            }).unwrap_or(Vec::new());
 
-        let m4 = keygen.msgs4
-            .map(|mm|
-                mm.finish().map_or(Vec::new(), |x| x.into_vec())
-            ).unwrap_or(Vec::new());
+        let m4 = keygen.msgs4.as_ref()
+            .map(|mm| {
+                mm.get_msgs()
+            }).unwrap_or(Vec::new());
 
         Self {
-            round: keygen.round,
+            round: keygen.round.clone(),
             msgs1: m1,
             msgs2: m2,
             msgs3: m3,
             msgs4: m4,
-            msgs_queue: keygen.msgs_queue,
+            msgs_queue: keygen.msgs_queue.clone(),
             party_i: keygen.party_i,
             party_n: keygen.party_n
         }
@@ -594,23 +592,25 @@ impl TryFrom<KeygenExportedState> for Keygen {
     }
 }
 
-fn push_messages_to_store<Container: MessageContainer>(
+pub (super) fn push_messages_to_store<Container: MessageContainer>(
     my_index: u16,
     receiver: Option<u16>,
     store: &mut Store<Container>,
-    msgs: Vec<<Store<Container> as MessageStore>::M>
+    msgs: Vec<Option<<Store<Container> as MessageStore>::M>>
 ) -> std::result::Result<(), <Store<Container> as MessageStore>::Err> {
     if msgs.is_empty() {
         return Ok(());
     }
 
     for (i, el) in msgs.into_iter().enumerate() {
-        let sender = if i >= my_index.into() { i + 1 } else { i };
-        store.push_msg(Msg{
-            sender: sender as u16,
-            receiver,
-            body: el,
-        })?;
+        if let Some(msg) = el {
+            let sender = if i >= my_index.into() { i + 1 } else { i };
+            store.push_msg(Msg{
+                sender: sender as u16,
+                receiver,
+                body: msg,
+            })?;
+        }
     }
 
     Ok(())

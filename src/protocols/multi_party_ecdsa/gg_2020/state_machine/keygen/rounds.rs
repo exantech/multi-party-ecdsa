@@ -17,7 +17,7 @@ use crate::protocols::multi_party_ecdsa::gg_2020::party_i::{
 };
 use crate::protocols::multi_party_ecdsa::gg_2020::{self, ErrorType};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round0 {
     pub party_i: u16,
     pub t: u16,
@@ -52,7 +52,7 @@ impl Round0 {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round1 {
     keys: Keys,
     bc1: KeyGenBroadcastMessage1,
@@ -94,7 +94,7 @@ impl Round1 {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round2 {
     keys: gg_2020::party_i::Keys,
     received_comm: Vec<KeyGenBroadcastMessage1>,
@@ -163,7 +163,7 @@ impl Round2 {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round3 {
     keys: gg_2020::party_i::Keys,
 
@@ -237,7 +237,7 @@ impl Round3 {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Round4 {
     keys: gg_2020::party_i::Keys,
     y_vec: Vec<Point<Secp256k1>>,
